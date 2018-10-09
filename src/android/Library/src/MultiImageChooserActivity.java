@@ -58,6 +58,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -65,6 +66,7 @@ import android.provider.MediaStore;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Base64;
+import android.util.Log;
 import android.util.SparseBooleanArray;
 import android.view.Display;
 import android.view.LayoutInflater;
@@ -77,6 +79,10 @@ import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
+
+import org.apache.cordova.LOG;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MultiImageChooserActivity extends AppCompatActivity implements
         OnItemClickListener,
@@ -505,19 +511,40 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
         }
     }
 
-    private class ResizeImagesTask extends AsyncTask<Set<Entry<String, Integer>>, Void, ArrayList<String>> {
+    private class ResizeImagesTask extends AsyncTask<Set<Entry<String, Integer>>, Void, JSONObject> {
         private Exception asyncTaskError = null;
 
         @Override
-        protected ArrayList<String> doInBackground(Set<Entry<String, Integer>>... fileSets) {
+        protected JSONObject doInBackground(Set<Entry<String, Integer>>... fileSets) {
             Set<Entry<String, Integer>> fileNames = fileSets[0];
             ArrayList<String> al = new ArrayList<String>();
+            JSONObject jsonObject = new JSONObject();
+            JSONArray jsonArray = new JSONArray();
+            JSONArray jsonArrayLatlng = new JSONArray();
+
             try {
                 Iterator<Entry<String, Integer>> i = fileNames.iterator();
                 Bitmap bmp;
                 while (i.hasNext()) {
                     Entry<String, Integer> imageInfo = i.next();
                     File file = new File(imageInfo.getKey());
+                     ExifInterface oldExif = new ExifInterface(imageInfo.getKey());
+                     String latitude = oldExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
+                     String longitude = oldExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
+                    JSONObject jsonObjectLatLng = new JSONObject();
+                    try {
+                        if(latitude != null){
+                            jsonObjectLatLng.put("latitude",convertToDegree(latitude));
+                            jsonObjectLatLng.put("longitude",convertToDegree(longitude));
+                        }else{
+                            jsonObjectLatLng.put("latitude",0);
+                            jsonObjectLatLng.put("longitude",0);
+                        }
+
+                        jsonArrayLatlng.put(jsonObjectLatLng);
+                    }catch (Exception e){
+
+                    }
                     int rotate = imageInfo.getValue();
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     options.inSampleSize = 1;
@@ -569,12 +596,20 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                     if (outputType == OutputType.FILE_URI) {
                         file = storeImage(bmp, file.getName());
                         al.add(Uri.fromFile(file).toString());
+                        jsonArray.put(Uri.fromFile(file).toString());
 
                     } else if (outputType == OutputType.BASE64_STRING) {
                         al.add(getBase64OfImage(bmp));
+                        jsonArray.put(getBase64OfImage(bmp));
                     }
+                }try{
+                    jsonObject.put("path",jsonArray );
+                    jsonObject.put("geo",jsonArrayLatlng);
+                }catch(Exception e){
+                    Log.e("exception in jsonobject", e.toString());
                 }
-                return al;
+
+                return jsonObject;
             } catch (IOException e) {
                 try {
                     asyncTaskError = e;
@@ -586,23 +621,55 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                 } catch (Exception ignore) {
                 }
 
-                return new ArrayList<String>();
+                return new JSONObject();
             }
         }
 
-        @Override
-        protected void onPostExecute(ArrayList<String> al) {
-            Intent data = new Intent();
+        private Float convertToDegree(String stringDMS){
+            Float result = null;
+            String[] DMS = stringDMS.split(",", 3);
 
+            String[] stringD = DMS[0].split("/", 2);
+            Double D0 = new Double(stringD[0]);
+            Double D1 = new Double(stringD[1]);
+            Double FloatD = D0/D1;
+
+            String[] stringM = DMS[1].split("/", 2);
+            Double M0 = new Double(stringM[0]);
+            Double M1 = new Double(stringM[1]);
+            Double FloatM = M0/M1;
+
+            String[] stringS = DMS[2].split("/", 2);
+            Double S0 = new Double(stringS[0]);
+            Double S1 = new Double(stringS[1]);
+            Double FloatS = S0/S1;
+
+            result = new Float(FloatD + (FloatM/60) + (FloatS/3600));
+
+            return result;
+
+
+        };
+        @Override
+        protected void onPostExecute(JSONObject al) {
+            Intent data = new Intent();
+            int val = 0 ;
+            try{
+                JSONObject obj = al;
+                JSONArray array = obj.getJSONArray("path");
+                val  = array.length() ;
+            }catch(Exception e){
+
+            }
             if (asyncTaskError != null) {
                 Bundle res = new Bundle();
                 res.putString("ERRORMESSAGE", asyncTaskError.getMessage());
                 data.putExtras(res);
                 setResult(RESULT_CANCELED, data);
 
-            } else if (al.size() > 0) {
+            } else if (val > 0) {
                 Bundle res = new Bundle();
-                res.putStringArrayList("MULTIPLEFILENAMES", al);
+                res.putString("MULTIPLEFILENAMES", al.toString());
 
                 if (imagecursor != null) {
                     res.putInt("TOTALFILES", imagecursor.getCount());

@@ -169,32 +169,48 @@ typedef enum : NSUInteger {
 
 #pragma mark - GMImagePickerControllerDelegate
 
-- (void)assetsPickerController:(GMImagePickerController *)picker didFinishPickingAssets:(NSArray *)fetchArray
+
+- (void)assetsPickerController:(GMImagePickerController *)picker didFinishPickingFetchAssets:(NSArray *)fetchArray didFinishPickingAssets:(NSArray *)assetArray
 {
     [picker.presentingViewController dismissViewControllerAnimated:YES completion:nil];
-
+    
     NSLog(@"GMImagePicker: User finished picking assets. Number of selected items is: %lu", (unsigned long)fetchArray.count);
-
+    
     NSMutableArray * result_all = [[NSMutableArray alloc] init];
     CGSize targetSize = CGSizeMake(self.width, self.height);
     NSFileManager* fileMgr = [[NSFileManager alloc] init];
     NSString* docsPath = [NSTemporaryDirectory()stringByStandardizingPath];
-
+    
     NSError* err = nil;
     int i = 1;
     NSString* filePath;
     CDVPluginResult* result = nil;
+    
+    NSMutableArray *resultlantlng = [[NSMutableArray alloc] init];
+    for (PHAsset *asset in assetArray)
+    {
+        NSString *longitude = [NSString stringWithFormat:@"%f",asset.location.coordinate.longitude];
+        NSString *latitude = [NSString stringWithFormat:@"%f",asset.location.coordinate.latitude];
+        NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+        [dic setValue:longitude forKey:@"longitude"];//Perform proper validation here for whatever your requirements are
+        [dic setValue:latitude forKey:@"latitude"];
+        
+        NSLog(@"%@", dic);
 
+        [resultlantlng addObject:dic];
+        
+    }
+    
     for (GMFetchItem *item in fetchArray) {
-
+        
         if ( !item.image_fullsize ) {
             continue;
         }
-
+        
         do {
             filePath = [NSString stringWithFormat:@"%@/%@%03d.%@", docsPath, CDV_PHOTO_PREFIX, i++, @"jpg"];
         } while ([fileMgr fileExistsAtPath:filePath]);
-
+        
         NSData* data = nil;
         if (self.width == 0 && self.height == 0) {
             // no scaling required
@@ -222,7 +238,7 @@ typedef enum : NSUInteger {
             UIImage* image = [UIImage imageNamed:item.image_fullsize];
             UIImage* scaledImage = [self imageByScalingNotCroppingForSize:image toSize:targetSize];
             data = UIImageJPEGRepresentation(scaledImage, self.quality/100.0f);
-
+            
             if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
                 result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
                 break;
@@ -235,15 +251,24 @@ typedef enum : NSUInteger {
             }
         }
     }
-
+    
     if (result == nil) {
-        result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:result_all];
+        NSMutableDictionary *tmpdic = [[NSMutableDictionary alloc]init];
+        [tmpdic setObject:result_all forKey:@"path"];
+        [tmpdic setObject:resultlantlng forKey:@"geo"];
+        
+        NSMutableArray *finalArray = [[NSMutableArray alloc]init];
+        [finalArray addObject:tmpdic];
+        
+        result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:finalArray];
     }
-
+    
     [self.viewController dismissViewControllerAnimated:YES completion:nil];
     [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
-
+    
 }
+
+
 
 //Optional implementation:
 -(void)assetsPickerControllerDidCancel:(GMImagePickerController *)picker

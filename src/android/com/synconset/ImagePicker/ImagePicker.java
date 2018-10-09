@@ -123,9 +123,16 @@ public class ImagePicker extends CordovaPlugin {
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (resultCode == Activity.RESULT_OK && data != null) {
-            ArrayList<String> fileNames = data.getStringArrayListExtra("MULTIPLEFILENAMES");
-            JSONArray res = new JSONArray(fileNames);
-            callbackContext.success(res);
+            String fileNames = data.getStringExtra("MULTIPLEFILENAMES");
+            try{
+                JSONObject jsonObject = new JSONObject(fileNames);
+                JSONArray res = new JSONArray();
+                res.put(jsonObject);
+                callbackContext.success(res);
+            }catch (Exception e){
+
+            }
+
 
         } else if (resultCode == Activity.RESULT_CANCELED && data != null) {
             String error = data.getStringExtra("ERRORMESSAGE");
